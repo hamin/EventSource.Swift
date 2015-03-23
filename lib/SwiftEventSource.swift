@@ -88,6 +88,7 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
         if(self.lastEventID != nil){
             request.setValue(self.lastEventID, forHTTPHeaderField: "Last-Event-ID")
         }
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
         self.eventSourceConnection = NSURLConnection(request: request, delegate: self, startImmediately: true)
     }
     
