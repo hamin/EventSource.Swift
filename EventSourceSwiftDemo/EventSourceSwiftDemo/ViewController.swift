@@ -42,7 +42,7 @@ func eventSourceReceivedError(event: Event, error: NSError) {
     println("DELEGATE: Received Error: \(error)")
 }
 
-func eventSourceReceivedMessage(event: Event, message: NSDictionary) {
+func eventSourceReceivedMessage(event: Event, message: String) {
     println("DELEGATE: RECEIVED MESSAGE: \(message)")
 }
 

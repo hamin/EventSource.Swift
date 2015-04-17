@@ -122,7 +122,7 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
     
     // MARK: NSURLConnectionDelegate
     func connection(connection: NSURLConnection, didReceiveResponse response: NSURLResponse) {
-        let httpResponse = response as NSHTTPURLResponse
+        let httpResponse = response as! NSHTTPURLResponse
         
         if(httpResponse.statusCode == 200){
             // Opened
@@ -176,7 +176,7 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
         
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), { () -> Void in
                 eventString = eventString!.stringByTrimmingCharactersInSet(NSCharacterSet.newlineCharacterSet())
-                let components = eventString?.componentsSeparatedByString(ESEventKeyValuePairSeparator) as [NSString]
+                let components = eventString?.componentsSeparatedByString(ESEventKeyValuePairSeparator) as! [NSString]
                 var event = Event()
                 event.readyState = EventState.OPEN
                 
@@ -191,7 +191,7 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
                     }
                     
                     let key = component.substringToIndex(index)
-                    let countForKeyValueDelimimter = countElements(ESKeyValueDelimiter)
+                    let countForKeyValueDelimimter = count(ESKeyValueDelimiter)
                     let value = component.substringFromIndex(index + countForKeyValueDelimimter)
                     
                     if ( key == ESEventIDKey) {
@@ -206,7 +206,7 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
                     }
                 }
                 
-                self.delegate?.eventSourceReceivedMessage?(event, message: eventString!)
+                self.delegate?.eventSourceReceivedMessage?(event, message: eventString! as String)
                 
                 if let messageHandlers:[EventSourceHandler] = self.listeners[EventType.MESSAGE.description]{
                     for handler in messageHandlers{
