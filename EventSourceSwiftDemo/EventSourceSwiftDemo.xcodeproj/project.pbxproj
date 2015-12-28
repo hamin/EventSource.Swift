@@ -167,6 +167,8 @@
 		AF6F22111A70125A0081D18E /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				LastSwiftMigration = 0710;
+				LastSwiftUpdateCheck = 0710;
 				LastUpgradeCheck = 0610;
 				ORGANIZATIONNAME = "Haris Amin";
 				TargetAttributes = {
@@ -417,6 +419,7 @@
 				AF6F223A1A70125B0081D18E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		AF6F223B1A70125B0081D18E /* Build configuration list for PBXNativeTarget "EventSourceSwiftDemoTests" */ = {
 			isa = XCConfigurationList;
@@ -425,6 +428,7 @@
 				AF6F223D1A70125B0081D18E /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

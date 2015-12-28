@@ -20,7 +20,7 @@ let ESEventEventKey = "event"
 let ESEventRetryKey = "retry"
 
 // MARK: EventState
-enum EventState : Printable {
+enum EventState : CustomStringConvertible {
     case CONNECTING;
     case OPEN;
     case CLOSED;
@@ -35,7 +35,7 @@ enum EventState : Printable {
 }
 
 // MARK: EventType
-enum EventType : Printable {
+enum EventType : CustomStringConvertible {
     case MESSAGE;
     case ERROR;
     case OPEN;
@@ -88,7 +88,7 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
     
     func open(){
         self.wasClosed = false
-        var request = NSMutableURLRequest(URL: self.eventURL!, cachePolicy: NSURLRequestCachePolicy.ReloadIgnoringLocalCacheData, timeoutInterval: self.timeoutInterval)
+        let request = NSMutableURLRequest(URL: self.eventURL!, cachePolicy: NSURLRequestCachePolicy.ReloadIgnoringLocalCacheData, timeoutInterval: self.timeoutInterval)
         if(self.lastEventID != nil){
             request.setValue(self.lastEventID, forHTTPHeaderField: "Last-Event-ID")
         }
@@ -126,7 +126,7 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
         
         if(httpResponse.statusCode == 200){
             // Opened
-            var event = Event()
+            let event = Event()
             event.readyState = EventState.OPEN
             
             self.delegate?.eventSourceOpenedConnection?(event)
@@ -144,8 +144,7 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
     }
     
     func connection(connection: NSURLConnection, didFailWithError error: NSError) {
-        //
-        var event = Event()
+        let event = Event()
         event.readyState = EventState.CLOSED
         event.error = error
         
@@ -176,23 +175,26 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
         
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), { () -> Void in
                 eventString = eventString!.stringByTrimmingCharactersInSet(NSCharacterSet.newlineCharacterSet())
-                let components = eventString?.componentsSeparatedByString(ESEventKeyValuePairSeparator) as! [NSString]
-                var event = Event()
+                let components = eventString!.componentsSeparatedByString(ESEventKeyValuePairSeparator)
+                let event = Event()
                 event.readyState = EventState.OPEN
                 
                 for component in components{
-                    if(component.length == 0){
+                    if(component.characters.count == 0){
                         continue
                     }
                     
-                    let index = component.rangeOfString(ESKeyValueDelimiter).location
-                    if (index == NSNotFound || index == (component.length - 2)) {
+                    let range = component.rangeOfString(ESKeyValueDelimiter)
+                    let index: Int = component.startIndex.distanceTo(range!.startIndex)
+                    if (index == NSNotFound || index == (component.characters.count - 2)) {
                         continue;
                     }
                     
-                    let key = component.substringToIndex(index)
-                    let countForKeyValueDelimimter = count(ESKeyValueDelimiter)
-                    let value = component.substringFromIndex(index + countForKeyValueDelimimter)
+                    let keyIndex = component.startIndex.advancedBy(index)
+                    let key = component.substringToIndex(keyIndex)
+                    let countForKeyValueDelimimter = ESKeyValueDelimiter.characters.count
+                    let valueIndex = component.startIndex.advancedBy(index + countForKeyValueDelimimter)
+                    let value = component.substringToIndex(valueIndex)
                     
                     if ( key == ESEventIDKey) {
                         event.eventId = value;
@@ -237,7 +239,7 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
         if(self.wasClosed){
             return
         }
-        var event = Event()
+        let event = Event()
         event.readyState = EventState.CLOSED
         event.error = NSError(domain: "", code: 2, userInfo: [NSLocalizedDescriptionKey: "Connection with the event source was closed."])
         
