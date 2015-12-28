@@ -117,7 +117,7 @@ EventSource.Swift requires at least iOS 7/OSX 10.10 or above.
 
 ## TODOs
 
-- [ ] Replace NSURLConnection with NSURLSession
+- [x] Replace NSURLConnection with NSURLSession
 - [ ] Cocoapods Integration
 - [ ] Complete Docs
 - [ ] Add Unit Tests

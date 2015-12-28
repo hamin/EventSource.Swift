@@ -65,9 +65,9 @@ typealias EventSourceHandler = (Event) -> Void
     optional func eventSourceReceivedMessage(event:Event, message: String)
 }
 
-class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegate {
+class EventSource: NSObject, NSURLSessionDataDelegate {
     private var eventURL:NSURL?
-    private var eventSourceConnection:NSURLConnection?
+    private var eventSourceTask:NSURLSessionDataTask?
     private var listeners = Dictionary<String, [EventSourceHandler]>()
     private var timeoutInterval:NSTimeInterval = 300.0
     private var retryInterval:NSTimeInterval = 1.0
@@ -93,12 +93,23 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
             request.setValue(self.lastEventID, forHTTPHeaderField: "Last-Event-ID")
         }
         request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-        self.eventSourceConnection = NSURLConnection(request: request, delegate: self, startImmediately: true)
+        request.cachePolicy = NSURLRequestCachePolicy.ReloadIgnoringCacheData
+        
+        let configuration = NSURLSessionConfiguration.defaultSessionConfiguration()
+        var additionalHeaders: [NSObject : AnyObject] = ["Accept":"text/event-stream", "Cache-Control": "no-cache"]
+        if(self.lastEventID != nil){
+            additionalHeaders["Last-Event-ID"] = self.lastEventID
+        }
+        configuration.HTTPAdditionalHeaders = additionalHeaders
+        
+        let session = NSURLSession(configuration: configuration, delegate: self, delegateQueue: NSOperationQueue())
+        self.eventSourceTask = session.dataTaskWithRequest(request)
+        self.eventSourceTask?.resume()
     }
     
     func close(){
         self.wasClosed = true
-        self.eventSourceConnection?.cancel()
+        self.eventSourceTask?.cancel()
     }
     
     func addEventListener(eventName:String, handler:EventSourceHandler){
@@ -120,82 +131,39 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
         self.addEventListener(EventType.OPEN.description, handler: handler)
     }
     
-    // MARK: NSURLConnectionDelegate
-    func connection(connection: NSURLConnection, didReceiveResponse response: NSURLResponse) {
-        let httpResponse = response as! NSHTTPURLResponse
-        
-        if(httpResponse.statusCode == 200){
-            // Opened
-            let event = Event()
-            event.readyState = EventState.OPEN
-            
-            self.delegate?.eventSourceOpenedConnection?(event)
-            
-            if let openHandlers:[EventSourceHandler] = self.listeners[EventType.OPEN.description]{
-                for handler in openHandlers{
-                    dispatch_async(dispatch_get_main_queue(), { () -> Void in
-                        handler(event)
-                    })
-                }
-            }
-            
-
-        }
-    }
     
-    func connection(connection: NSURLConnection, didFailWithError error: NSError) {
-        let event = Event()
-        event.readyState = EventState.CLOSED
-        event.error = error
-        
-        self.delegate?.eventSourceReceivedError?(event, error: error)
-        
-        if let errorHandlers:[EventSourceHandler] = self.listeners[EventType.ERROR.description]{
-            for handler in errorHandlers{
-                dispatch_async(dispatch_get_main_queue(), { () -> Void in
-                    handler(event)
-                })
-            }
-            
-            let popTime = dispatch_time(DISPATCH_TIME_NOW, Int64(self.retryInterval * Double(NSEC_PER_SEC)))
-            dispatch_after(popTime, dispatch_get_main_queue()) {
-                self.open()
-            }
-        }
-
-    }
+    // MARK: NSURLSessionDataDelegate
     
-    // MARK: NSURLConnectionDataDelegate
-    func connection(connection: NSURLConnection, didReceiveData data: NSData) {
+    internal func URLSession(session: NSURLSession, dataTask: NSURLSessionDataTask, didReceiveData data: NSData) {
         var eventString = NSString(data: data, encoding: NSUTF8StringEncoding)
-        
+
         if( eventString!.hasSuffix(ESEventSeparatorLFLF) ||
             eventString!.hasSuffix(ESEventSeparatorCRCR) ||
             eventString!.hasSuffix(ESEventSeparatorCRLFCRLF) ) {
-        
+
             dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), { () -> Void in
                 eventString = eventString!.stringByTrimmingCharactersInSet(NSCharacterSet.newlineCharacterSet())
                 let components = eventString!.componentsSeparatedByString(ESEventKeyValuePairSeparator)
                 let event = Event()
                 event.readyState = EventState.OPEN
-                
+
                 for component in components{
                     if(component.characters.count == 0){
                         continue
                     }
-                    
+
                     let range = component.rangeOfString(ESKeyValueDelimiter)
                     let index: Int = component.startIndex.distanceTo(range!.startIndex)
                     if (index == NSNotFound || index == (component.characters.count - 2)) {
                         continue;
                     }
-                    
+
                     let keyIndex = component.startIndex.advancedBy(index)
                     let key = component.substringToIndex(keyIndex)
                     let countForKeyValueDelimimter = ESKeyValueDelimiter.characters.count
                     let valueIndex = component.startIndex.advancedBy(index + countForKeyValueDelimimter)
                     let value = component.substringToIndex(valueIndex)
-                    
+
                     if ( key == ESEventIDKey) {
                         event.eventId = value;
                         self.lastEventID = event.eventId;
@@ -207,9 +175,9 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
                         self.retryInterval = (value as NSString).doubleValue
                     }
                 }
-                
+
                 self.delegate?.eventSourceReceivedMessage?(event, message: eventString! as String)
-                
+
                 if let messageHandlers:[EventSourceHandler] = self.listeners[EventType.MESSAGE.description]{
                     for handler in messageHandlers{
                         dispatch_async(dispatch_get_main_queue(), { () -> Void in
@@ -218,7 +186,7 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
                     }
                 }
 
-                
+
                 if(event.event != nil){
                     if let namedEventhandlers:[EventSourceHandler] = self.listeners[event.event!]{
                         for handler in namedEventhandlers{
@@ -232,28 +200,51 @@ class EventSource: NSObject, NSURLConnectionDelegate, NSURLConnectionDataDelegat
                 
             })
         }
-
     }
     
-    func connectionDidFinishLoading(connection: NSURLConnection) {
-        if(self.wasClosed){
-            return
+    internal func URLSession(session: NSURLSession, dataTask: NSURLSessionDataTask, didReceiveResponse response: NSURLResponse, completionHandler: ((NSURLSessionResponseDisposition) -> Void)) {
+        completionHandler(NSURLSessionResponseDisposition.Allow)
+        
+        let httpResponse = response as! NSHTTPURLResponse
+
+        if(httpResponse.statusCode == 200){
+            // Opened
+            let event = Event()
+            event.readyState = EventState.OPEN
+
+            self.delegate?.eventSourceOpenedConnection?(event)
+
+            if let openHandlers:[EventSourceHandler] = self.listeners[EventType.OPEN.description]{
+                for handler in openHandlers{
+                    dispatch_async(dispatch_get_main_queue(), { () -> Void in
+                        handler(event)
+                    })
+                }
+            }
+            
+
         }
+    }
+    
+    internal func URLSession(session: NSURLSession, task: NSURLSessionTask, didCompleteWithError error: NSError?) {
+        print("THERE IS AN ERROR: \(error)")
         let event = Event()
         event.readyState = EventState.CLOSED
-        event.error = NSError(domain: "", code: 2, userInfo: [NSLocalizedDescriptionKey: "Connection with the event source was closed."])
-        
-        self.delegate?.eventSourceReceivedError?(event, error: event.error!)
-        
+        event.error = error
+
+        self.delegate?.eventSourceReceivedError?(event, error: error!)
+
         if let errorHandlers:[EventSourceHandler] = self.listeners[EventType.ERROR.description]{
             for handler in errorHandlers{
                 dispatch_async(dispatch_get_main_queue(), { () -> Void in
                     handler(event)
                 })
             }
-            self.open()
+
+            let popTime = dispatch_time(DISPATCH_TIME_NOW, Int64(self.retryInterval * Double(NSEC_PER_SEC)))
+            dispatch_after(popTime, dispatch_get_main_queue()) {
+                self.open()
+            }
         }
     }
-    
-    
 }
